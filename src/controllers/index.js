@@ -68,16 +68,29 @@ module.exports = function (app) {
         return true
     }
 
-    async function sendTokensToRecipient(web3, receiver, response, isDebug) {
+    const GAS_PRICE_BUMP_PERCENT = 20
+    const MAX_RETRIES = 3
+
+    async function sendTokensToRecipient(web3, receiver, response, isDebug, retryCount = 0) {
         let senderPrivateKey = config.Ethereum[config.environment].privateKey
         const privateKeyHex = Buffer.from(senderPrivateKey, 'hex')
         if (!web3.utils.isAddress(receiver)) {
             return generateErrorResponse(response, { message: messages.INVALID_ADDRESS })
         }
 
-        const gasPriceHex = web3.utils.toHex(config.Ethereum.gasPrice)
+        let gasPriceWei
+        if (config.Ethereum.gasPriceGwei) {
+            gasPriceWei = Math.floor(parseFloat(config.Ethereum.gasPriceGwei) * 1e9).toString()
+        } else {
+            gasPriceWei = config.Ethereum.gasPrice
+        }
+        if (retryCount > 0) {
+            const bumpMultiplier = 100 + (GAS_PRICE_BUMP_PERCENT * (retryCount))
+            gasPriceWei = new web3.utils.BN(gasPriceWei).mul(bumpMultiplier).div(100)
+        }
+        const gasPriceHex = web3.utils.toHex(gasPriceWei)
         const gasLimitHex = web3.utils.toHex(config.Ethereum.gasLimit)
-        const nonce = await web3.eth.getTransactionCount(config.Ethereum[config.environment].account)
+        const nonce = await web3.eth.getTransactionCount(config.Ethereum[config.environment].account, 'pending')
         const nonceHex = web3.utils.toHex(nonce)
         const BN = web3.utils.BN
         const ethToSend = web3.utils.toWei(new BN(config.Ethereum.milliEtherToTransfer), "milliether")
@@ -94,25 +107,36 @@ module.exports = function (app) {
 
         const serializedTx = tx.serialize()
 
-        let txHash
-        web3.eth.sendSignedTransaction("0x" + serializedTx.toString('hex'))
-            .on('transactionHash', (_txHash) => {
-                txHash = _txHash
-            })
-            .on('receipt', (receipt) => {
-                debug(isDebug, receipt)
-                if (receipt.status == '0x1') {
-                    return sendRawTransactionResponse(txHash, response)
-                } else {
-                    const error = {
-                        message: messages.TX_HAS_BEEN_MINED_WITH_FALSE_STATUS,
+        const sendTx = () => new Promise((resolve, reject) => {
+            let txHash
+            web3.eth.sendSignedTransaction("0x" + serializedTx.toString('hex'))
+                .on('transactionHash', (_txHash) => {
+                    txHash = _txHash
+                })
+                .on('receipt', (receipt) => {
+                    debug(isDebug, receipt)
+                    if (receipt.status == '0x1') {
+                        resolve(sendRawTransactionResponse(txHash, response))
+                    } else {
+                        reject(new Error(messages.TX_HAS_BEEN_MINED_WITH_FALSE_STATUS))
                     }
-                    return generateErrorResponse(response, error);
-                }
-            })
-            .on('error', (error) => {
-                return generateErrorResponse(response, error)
-            });
+                })
+                .on('error', (error) => {
+                    reject(error)
+                })
+        })
+
+        try {
+            await sendTx()
+        } catch (error) {
+            const errMsg = (error && error.message) ? error.message : String(error)
+            const isGasNonceError = /gas price.*too low|same nonce|nonce.*queue/i.test(errMsg)
+            if (isGasNonceError && retryCount < MAX_RETRIES) {
+                debug(isDebug, `Gas/nonce error, retrying (${retryCount + 1}/${MAX_RETRIES}) with higher gas price`)
+                return sendTokensToRecipient(web3, receiver, response, isDebug, retryCount + 1)
+            }
+            return generateErrorResponse(response, error)
+        }
     }
 
     function sendRawTransactionResponse(txHash, response) {
