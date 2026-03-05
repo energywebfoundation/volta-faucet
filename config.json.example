@@ -1,0 +1,23 @@
+{
+  "environment": "prod",
+  "debug": false,
+  "Captcha": {
+    "secret": "reCaptcha plugin secret"
+  },
+  "explorerTxUrl": "https://volta-explorer.energyweb.org/tx",
+  "Ethereum": {
+    "milliEtherToTransfer": "500",
+    "gasLimit": "2452000",
+    "gasPriceGwei": "1.001",
+    "prod": {
+      "rpc": "https://volta-rpc.energyweb.org",
+      "account": "0x...",
+      "privateKey": "0x..."
+    },
+    "dev": {
+      "rpc": "http://localhost:8545",
+      "account": "0x...",
+      "privateKey": "0x..."
+    }
+  }
+}

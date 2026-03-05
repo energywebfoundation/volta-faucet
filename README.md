@@ -26,8 +26,8 @@
   "explorerTxUrl": "URL of the blockchain explorer to use for looking up the tx hash, e.g. http://explorer.energyweb.org/tx",
   "Ethereum": {
     "etherToTransfer": "The number of milliEther to be sent from the faucet. For example, 500",
-    "gasLimit": "Transaction gas limit, for example, 21000",
-    "gasPrice": "Gas price, e.g. 10",
+    "gasLimit": "Transaction gas limit, e.g. 2452000",
+    "gasPriceGwei": "Gas price in Gwei, e.g. 1.001 (use this for Volta; gasPrice in wei also supported)",
     "prod": {
       "rpc": "JSON RPC endpoint. For example, https://core.poa.network",
       "account": "The address from which the funds will be drained",
